@@ -1,4 +1,4 @@
-import { _decorator, Component,Button, Node, Input,debug,EditBox,Toggle, sys,Label,Slider, Sprite,color} from 'cc';
+import { _decorator, Component,Button, Node, Input,debug,EditBox,Toggle, sys,Label,Slider, Sprite,color,native} from 'cc';
 const { ccclass, property } = _decorator;
 
 const AP_IP = "192.168.4.1";
@@ -158,12 +158,21 @@ export class main extends Component {
     }
 
     triggerVibration() {
-        // 检查浏览器是否支持震动功能
-        if ('vibrate' in navigator) {
-            // 触发震动，参数为震动时间（毫秒）
-            navigator.vibrate(200);
-        } else {
-            console.log('当前浏览器不支持震动功能');
+        if (sys.isBrowser) {
+            if ('vibrate' in navigator) {
+                // 触发震动，参数为震动时间（毫秒）
+             navigator.vibrate(20);
+            } else {
+             console.log('当前浏览器不支持震动功能');
+            }
+        } else if (sys.os === sys.OS.ANDROID) {
+           // jsb.Device.vibrate(20);
+            console.log("Running on an Android device");
+        } else if (sys.os === sys.OS.IOS) {
+            //jsb.Device.vibrate(20);
+            console.log("Running on an iOS device");
+        } else if (sys.isNative) {
+            console.log("Running in a native environment");
         }
     }
 
@@ -183,6 +192,10 @@ export class main extends Component {
     }
 
     getStatus(){
+        this.httpReqStatus();
+    }
+
+    httpReqStatus(){
         var ip = this.ipEditBox.string
         var url = "http://"+ip+"/status";
     
@@ -192,10 +205,10 @@ export class main extends Component {
         fetch(url).then((response: Response) => {
             return response.text()
         }).then((value) => {
-            const params = new URLSearchParams(value);
-            var isLedOn = params.get("led")=="1";
-            var isPro = params.get("pro")=="1";
-            var isAP = params.get("ap")=="1";
+            const parsed = self.parseQueryString(value);
+            var isLedOn = parsed.led=="1";
+            var isPro = parsed.pro=="1";
+            var isAP = parsed.ap=="1";
             self.setLedOn(isLedOn);
             self.setPro(isPro);
             self.toggleConnected.isChecked=true;
@@ -212,25 +225,43 @@ export class main extends Component {
         console.info("httpGet",url);
     }
 
+    parseQueryString(queryString:string) {
+        const queryObject = {};
+        // 去掉开头的问号
+        const query = queryString.startsWith('?') ? queryString.slice(1) : queryString;
+    
+        // 将字符串按 "&" 分割
+        const pairs = query.split('&');
+    
+        pairs.forEach(pair => {
+            // 将每一对按 "=" 分割
+            const [key, value] = pair.split('=');
+            // 将键值对添加到对象中
+            queryObject[key] = value;
+        });
+    
+        return queryObject;
+    }
+
     onClickLedBtn(button:Button){
         var isLedOn = !this.isLedOn;
         if (isLedOn){
-            this.httpGet("push4",1)
+            this.httpGet("push4",1,this.getStatus.bind(this))
         }else{
-            this.httpGet("push4",0)
+            this.httpGet("push4",0,this.getStatus.bind(this))
         }
-        this.getStatus();
+        //this.getStatus(100);
         this.triggerVibration();
     }
 
     onClickProBtn(button:Button){
         var isPro = !this.isPro;
         if (isPro){
-            this.httpGet("toggle1",1)
+            this.httpGet("toggle1",1,this.getStatus.bind(this))
         }else{
-            this.httpGet("toggle1",0)
+            this.httpGet("toggle1",0,this.getStatus.bind(this))
         }
-        this.getStatus();
+       // this.getStatus(100);
         this.triggerVibration();
     }
 
@@ -275,12 +306,15 @@ export class main extends Component {
     //     console.info("httpGet",url);
     // }
 
-    httpGet(param:string,value:number) {
+    httpGet(param:string,value:number,succCallback=null) {
         var url = "http://"+this.ipEditBox.string+"/?"+param+"="+this.formatNumber(value).toString();
         fetch(url).then((response: Response) => {
             return response.text()
         }).then((value) => {
-            console.log(value);
+            if (succCallback!=null){
+                succCallback()
+            }
+            console.log("httpThen",succCallback,value);
         }).catch((error) => {
             console.error('请求失败:', error);
         });
